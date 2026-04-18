@@ -19,6 +19,7 @@
 - Step-3: complete (DW 2D conv on xBC branch, scan core still flattened 1D)
 - Step-4: complete (2D split+conv+scan glue helper wired into `Mamba2_2D`)
 - Step-5: complete (prefill-only public surface tightened; non-runtime selective-scan shim removed)
+- Step-7: complete (standalone README + runnable demo script added)
 
 ## Packaging intent
 - Keep a minimal set of Triton kernels and utility files inside this package tree
