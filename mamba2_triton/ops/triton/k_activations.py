@@ -5,7 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
-from mamba_ssm.utils.determinism import autotune_configs
+from mamba2_triton.utils.determinism import autotune_configs
 
 
 @triton.autotune(

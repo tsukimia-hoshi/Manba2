@@ -11,12 +11,12 @@ import warnings
 
 import torch
 import torch.nn.functional as F
-from ...utils.torch import custom_bwd, custom_fwd
+from mamba_ssm.utils.torch import custom_bwd, custom_fwd
 
 import triton
 import triton.language as tl
 
-from ...utils.determinism import autotune_configs
+from mamba_ssm.utils.determinism import autotune_configs
 
 
 def layer_norm_ref(

@@ -11,7 +11,7 @@ from packaging import version
 import torch
 import torch.nn.functional as F
 from torch import Tensor
-from mamba_ssm.utils.torch import custom_bwd, custom_fwd
+from mamba2_triton.utils.torch import custom_bwd, custom_fwd
 
 import triton
 import triton.language as tl
@@ -27,22 +27,22 @@ except ImportError:
     causal_conv1d_bwd_function = None
     causal_conv1d_update_function = None
 
-from mamba_ssm.ops.triton.ssd_bmm import _bmm_chunk_fwd, _bmm_chunk_bwd
-from mamba_ssm.ops.triton.ssd_chunk_state import _chunk_cumsum_fwd, _chunk_cumsum_bwd
-from mamba_ssm.ops.triton.ssd_chunk_state import _chunk_state_fwd, _chunk_state_bwd_db
-from mamba_ssm.ops.triton.ssd_chunk_state import _chunk_state_bwd_ddAcs_stable
-from mamba_ssm.ops.triton.ssd_chunk_state import chunk_state, chunk_state_ref
-from mamba_ssm.ops.triton.ssd_chunk_state import chunk_state_varlen
-from mamba_ssm.ops.triton.ssd_state_passing import _state_passing_fwd, _state_passing_bwd
-from mamba_ssm.ops.triton.ssd_state_passing import state_passing, state_passing_ref
-from mamba_ssm.ops.triton.ssd_chunk_scan import _chunk_scan_fwd, _chunk_scan_bwd_dz, _chunk_scan_bwd_dstates
-from mamba_ssm.ops.triton.ssd_chunk_scan import _chunk_scan_bwd_dC, _chunk_scan_bwd_dcb
-from mamba_ssm.ops.triton.ssd_chunk_scan import _chunk_scan_bwd_ddAcs_stable
-from mamba_ssm.ops.triton.ssd_chunk_scan import chunk_scan, chunk_scan_ref
-from mamba_ssm.ops.triton.ssd_chunk_scan import _chunk_scan_bwd_ddAcs_prev
-from mamba_ssm.ops.triton.layernorm_gated import rmsnorm_fn, _layer_norm_fwd, _layer_norm_bwd
-from mamba_ssm.ops.triton.k_activations import _swiglu_fwd, _swiglu_bwd
-from mamba_ssm.utils.determinism import (
+from mamba2_triton.ops.triton.ssd_bmm import _bmm_chunk_fwd, _bmm_chunk_bwd
+from mamba2_triton.ops.triton.ssd_chunk_state import _chunk_cumsum_fwd, _chunk_cumsum_bwd
+from mamba2_triton.ops.triton.ssd_chunk_state import _chunk_state_fwd, _chunk_state_bwd_db
+from mamba2_triton.ops.triton.ssd_chunk_state import _chunk_state_bwd_ddAcs_stable
+from mamba2_triton.ops.triton.ssd_chunk_state import chunk_state, chunk_state_ref
+from mamba2_triton.ops.triton.ssd_chunk_state import chunk_state_varlen
+from mamba2_triton.ops.triton.ssd_state_passing import _state_passing_fwd, _state_passing_bwd
+from mamba2_triton.ops.triton.ssd_state_passing import state_passing, state_passing_ref
+from mamba2_triton.ops.triton.ssd_chunk_scan import _chunk_scan_fwd, _chunk_scan_bwd_dz, _chunk_scan_bwd_dstates
+from mamba2_triton.ops.triton.ssd_chunk_scan import _chunk_scan_bwd_dC, _chunk_scan_bwd_dcb
+from mamba2_triton.ops.triton.ssd_chunk_scan import _chunk_scan_bwd_ddAcs_stable
+from mamba2_triton.ops.triton.ssd_chunk_scan import chunk_scan, chunk_scan_ref
+from mamba2_triton.ops.triton.ssd_chunk_scan import _chunk_scan_bwd_ddAcs_prev
+from mamba2_triton.ops.triton.layernorm_gated import rmsnorm_fn, _layer_norm_fwd, _layer_norm_bwd
+from mamba2_triton.ops.triton.k_activations import _swiglu_fwd, _swiglu_bwd
+from mamba2_triton.utils.determinism import (
     alloc_tile_workspace,
     autotune_configs,
     finalize_tile_workspace,
@@ -735,41 +735,11 @@ def ssd_selective_scan(x, dt, A, B, C, D=None, z=None, dt_bias=None, dt_softplus
     Return:
         out: (batch, seqlen, nheads, headdim)
     """
-    from mamba_ssm.ops.selective_scan_interface import selective_scan_fn
-
-    batch, seqlen, nheads, headdim = x.shape
-    _, _, ngroups, dstate = B.shape
-    x = rearrange(x, "b l h p -> b (h p) l")
-    if dt.dim() == 3:
-        dt = repeat(dt, "b l h -> b l h p", p=headdim)
-    dt = rearrange(dt, "b l h p -> b (h p) l")
-    if A.dim() == 1:
-        A = repeat(A, "h -> (h p) n", p=headdim, n=dstate).to(dtype=torch.float32)
-    else:
-        A = A.to(dtype=torch.float32)
-    B = rearrange(B, "b l g n -> b g n l")
-    C = rearrange(C, "b l g n -> b g n l")
-    if D is not None:
-        if D.dim() == 2:
-            D = rearrange(D, "h p -> (h p)")
-        else:
-            D = repeat(D, "h -> (h p)", p=headdim)
-    if z is not None:
-        z = rearrange(z, "b l h p -> b (h p) l")
-    if dt_bias is not None:
-        if dt_bias.dim() == 1:
-            dt_bias = repeat(dt_bias, "h -> h p", p=headdim)
-        dt_bias = rearrange(dt_bias, "h p -> (h p)")
-    if dt_limit != (0.0, float("inf")):
-        if dt_bias is not None:
-            dt = dt + rearrange(dt_bias, "d -> d 1")
-        if dt_softplus:
-            dt = F.softplus(dt)
-        dt = dt.clamp(min=dt_limit[0], max=dt_limit[1]).to(x.dtype)
-        dt_bias = None
-        dt_softplus = None
-    out = selective_scan_fn(x, dt, A, B, C, D=D, z=z, delta_bias=dt_bias, delta_softplus=dt_softplus)
-    return rearrange(out, "b (h p) l -> b l h p", p=headdim)
+    raise NotImplementedError(
+        "ssd_selective_scan is a reference-only path and is intentionally removed "
+        "from the standalone prefill runtime. Use mamba_chunk_scan_combined or "
+        "mamba_split_conv2d_scan_combined instead."
+    )
 
 
 def mamba_conv1d_scan_ref(xBC, conv1d_weight, conv1d_bias, dt, A, chunk_size, D=None, z=None,
@@ -1046,3 +1016,118 @@ def mamba_split_conv1d_scan_ref(zxbcdt, conv1d_weight, conv1d_bias, dt_bias, A, 
         out = F.linear(out, outproj_weight, outproj_bias)
     return out
 
+
+def mamba_split_conv2d_scan_combined(
+    zxbcdt,
+    conv2d_weight,
+    conv2d_bias,
+    dt_bias,
+    A,
+    D,
+    chunk_size,
+    dt_limit=(0.0, float("inf")),
+    activation="silu",
+    rmsnorm_weight=None,
+    rmsnorm_eps=1e-6,
+    outproj_weight=None,
+    outproj_bias=None,
+    headdim=None,
+    ngroups=1,
+    norm_before_gate=True,
+):
+    """Split+DWConv2d+scan fused glue for BHWC prefill path.
+
+    This helper keeps the scan core 1D (flattened H*W tokens), while using
+    a true 2D depthwise convolution over the xBC branch.
+
+    Args:
+        zxbcdt: (batch, height, width, 2 * d_nonssm + 2 * dim + 2 * ngroups * dstate + nheads)
+        conv2d_weight: (dim + 2 * ngroups * dstate, 1, kh, kw) depthwise conv weights
+        conv2d_bias: (dim + 2 * ngroups * dstate,)
+        dt_bias: (nheads,)
+        A: (nheads,)
+        D: (nheads, headdim) or (nheads,)
+    Returns:
+        out: (batch, height, width, out_dim)
+    """
+    assert activation in [None, "silu", "swish"]
+    if D.dim() == 1:
+        assert headdim is not None
+        nheads, = D.shape
+    else:
+        nheads, headdim = D.shape
+    assert nheads % ngroups == 0
+
+    batch, height, width, _ = zxbcdt.shape
+    dim = nheads * headdim
+    dstate = (conv2d_weight.shape[0] - dim) // ngroups // 2
+    d_nonssm = (zxbcdt.shape[-1] - 2 * dim - 2 * ngroups * dstate - nheads) // 2
+    assert d_nonssm >= 0
+    assert zxbcdt.shape[-1] == 2 * d_nonssm + 2 * dim + 2 * ngroups * dstate + nheads
+    assert dt_bias.shape == (nheads,)
+    assert A.shape == (nheads,)
+    if rmsnorm_weight is not None:
+        assert rmsnorm_weight.shape == (dim,)
+
+    z0, x0, z, xBC, dt = torch.split(
+        zxbcdt,
+        [d_nonssm, d_nonssm, dim, dim + 2 * ngroups * dstate, nheads],
+        dim=-1,
+    )
+
+    # DWConv2d over channel-first view, using permute views only.
+    xBC_cf = xBC.permute(0, 3, 1, 2)
+    xBC_cf = F.conv2d(
+        xBC_cf,
+        conv2d_weight,
+        conv2d_bias,
+        stride=1,
+        padding=(conv2d_weight.shape[-2] // 2, conv2d_weight.shape[-1] // 2),
+        groups=conv2d_weight.shape[0],
+    )
+    if activation in ["silu", "swish"]:
+        xBC_cf = F.silu(xBC_cf)
+    xBC = xBC_cf.permute(0, 2, 3, 1)
+
+    # Flatten only at scan boundary.
+    seqlen = height * width
+    xBC = xBC.reshape(batch, seqlen, -1)
+    dt = dt.reshape(batch, seqlen, nheads)
+    z = z.reshape(batch, seqlen, dim)
+    z0 = z0.reshape(batch, seqlen, d_nonssm)
+    x0 = x0.reshape(batch, seqlen, d_nonssm)
+
+    x, B, C = torch.split(xBC, [dim, ngroups * dstate, ngroups * dstate], dim=-1)
+    x = rearrange(x, "b l (h p) -> b l h p", h=nheads)
+    B = rearrange(B, "b l (g n) -> b l g n", g=ngroups)
+    C = rearrange(C, "b l (g n) -> b l g n", g=ngroups)
+    z_reshaped = rearrange(z, "b l (h p) -> b l h p", h=nheads)
+
+    out = mamba_chunk_scan_combined(
+        x,
+        dt.to(x.dtype),
+        A,
+        B,
+        C,
+        chunk_size=chunk_size,
+        D=D,
+        z=z_reshaped if rmsnorm_weight is None else None,
+        dt_bias=dt_bias,
+        dt_softplus=True,
+        dt_limit=dt_limit,
+    )
+    out = rearrange(out, "b l h p -> b l (h p)")
+    if rmsnorm_weight is not None:
+        out = rmsnorm_fn(
+            out,
+            rmsnorm_weight,
+            None,
+            z=z,
+            eps=rmsnorm_eps,
+            norm_before_gate=norm_before_gate,
+        )
+    if d_nonssm > 0:
+        out = torch.cat([F.silu(z0) * x0, out], dim=-1)
+    if outproj_weight is not None:
+        out = F.linear(out, outproj_weight, outproj_bias)
+    return out.reshape(batch, height, width, out.shape[-1])
