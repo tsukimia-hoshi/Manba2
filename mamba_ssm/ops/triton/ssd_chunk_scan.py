@@ -14,8 +14,8 @@ import triton.language as tl
 
 from einops import rearrange, repeat
 
-from .ssd_bmm import _bmm_chunk_fwd, _bmm_chunk_bwd
-from ...utils.determinism import (
+from mamba_ssm.ops.triton.ssd_bmm import _bmm_chunk_fwd, _bmm_chunk_bwd
+from mamba_ssm.utils.determinism import (
     alloc_tile_workspace,
     finalize_tile_workspace,
     use_deterministic_mode,

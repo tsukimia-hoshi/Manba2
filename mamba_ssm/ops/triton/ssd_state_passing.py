@@ -12,7 +12,7 @@ import triton.language as tl
 
 from einops import rearrange, repeat
 
-from ...utils.determinism import autotune_configs
+from mamba_ssm.utils.determinism import autotune_configs
 
 
 @triton.autotune(
