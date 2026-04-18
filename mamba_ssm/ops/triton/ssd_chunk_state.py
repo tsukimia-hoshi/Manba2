@@ -12,8 +12,8 @@ import triton.language as tl
 
 from einops import rearrange, repeat
 
-from mamba_ssm.ops.triton.softplus import softplus
-from mamba_ssm.utils.determinism import (
+from .softplus import softplus
+from ...utils.determinism import (
     alloc_tile_workspace,
     finalize_tile_workspace,
     use_deterministic_mode,
